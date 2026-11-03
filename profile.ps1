@@ -2,6 +2,7 @@
 # A local copy loads immediately; an update is staged for a later shell.
 # The next shell reports '[profile] updated' once after loading a staged update.
 # Run Update-PowerShellProfile to check immediately; changes load in the next shell.
+# Forced checks resolve the latest commit to avoid stale GitHub branch downloads.
 $CachePath = Join-Path $env:USERPROFILE '.cache\psprofile'
 $RemoteUri = 'https://raw.githubusercontent.com/hanpq/PSProfile/refs/heads/main/'
 $Files = @('CustomProfile.ps1', 'getps_ohmyposh.json', 'terminal_settings.json')
@@ -66,12 +67,26 @@ $UpdateProfile = {
         }
         Set-Content -Path $attempt -Value ([datetime]::UtcNow.ToString('o'))
 
+        $downloadUri = $RemoteUri
+        if ($Force)
+        {
+            $commitUri = ($RemoteUri -replace '^https://raw.githubusercontent.com/',
+                'https://api.github.com/repos/' -replace '/refs/heads/', '/commits/').TrimEnd('/')
+            $commit = Invoke-RestMethod -Uri ($commitUri + '?profile-check=' + [guid]::NewGuid().ToString('N')) `
+                -Headers @{ 'Cache-Control' = 'no-cache' } -TimeoutSec 10 -ErrorAction Stop
+            if ($commit.sha -notmatch '^[a-f0-9]{40}$')
+            {
+                throw 'GitHub returned an invalid profile commit.'
+            }
+            $downloadUri = $RemoteUri -replace '/refs/heads/.+/$', "/$($commit.sha)/"
+        }
+
         $stage = Join-Path $CachePath ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $stage -ErrorAction Stop | Out-Null
         foreach ($file in $Files)
         {
             $destination = Join-Path $stage $file
-            Invoke-WebRequest -Uri ($RemoteUri + $file) -OutFile $destination `
+            Invoke-WebRequest -Uri ($downloadUri + $file) -OutFile $destination `
                 -UseBasicParsing -TimeoutSec 10 -ErrorAction Stop
             Unblock-File -Path $destination -ErrorAction Stop
         }
