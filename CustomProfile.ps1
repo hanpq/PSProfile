@@ -36,5 +36,3 @@ switch ($PSVersionTable.PSEdition)
 # Turn on information messages for the rest of the profile
 $global:InformationPreference = 'Continue'
 "Configured global InformationPreference to 'Continue'" | Write-Verbose
-
-# This is a test
