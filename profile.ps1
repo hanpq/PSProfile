@@ -1,6 +1,7 @@
 ﻿# Install this bootstrapper as $PROFILE.CurrentUserAllHosts on each computer.
 # A local copy loads immediately; an update is staged for a later shell.
 # The next shell reports '[profile] updated' once after loading a staged update.
+# Run Update-PowerShellProfile to check immediately; changes load in the next shell.
 $CachePath = Join-Path $env:USERPROFILE '.cache\psprofile'
 $RemoteUri = 'https://raw.githubusercontent.com/hanpq/PSProfile/refs/heads/main/'
 $Files = @('CustomProfile.ps1', 'getps_ohmyposh.json', 'terminal_settings.json')
@@ -8,7 +9,7 @@ $Pointer = Join-Path $CachePath 'current.txt'
 $Attempt = Join-Path $CachePath 'last-attempt.txt'
 
 $UpdateProfile = {
-    param($CachePath, $RemoteUri, $Files, [bool]$Force)
+    param($CachePath, $RemoteUri, $Files, [bool]$Force, [bool]$InitialSetup = $false)
 
     $lock = $null
     $stage = $null
@@ -47,7 +48,7 @@ $UpdateProfile = {
 
         $pointer = Join-Path $CachePath 'current.txt'
         $attempt = Join-Path $CachePath 'last-attempt.txt'
-        if ($Force -and (Test-Path $pointer))
+        if ($InitialSetup -and (Test-Path $pointer))
         {
             $installedVersion = (Get-Content -Raw -Path $pointer -ErrorAction Stop).Trim()
             if ($installedVersion -match '^[a-f0-9]{32}$' -and
@@ -113,12 +114,16 @@ $UpdateProfile = {
             if ($unchanged)
             {
                 Remove-Item (Join-Path $CachePath 'pending-error.txt') -ErrorAction SilentlyContinue
+                if ($Force -and -not $InitialSetup)
+                {
+                    Write-Host '[profile] already up to date' -ForegroundColor DarkCyan
+                }
                 return
             }
         }
 
         $version = Split-Path $stage -Leaf
-        if (-not $Force)
+        if (-not $InitialSetup)
         {
             New-Item -ItemType File -Path (Join-Path $stage 'pending-update.txt') -ErrorAction Stop | Out-Null
         }
@@ -135,6 +140,10 @@ $UpdateProfile = {
         $temporaryPointer = $null
         $stage = $null
         Remove-Item (Join-Path $CachePath 'pending-error.txt') -ErrorAction SilentlyContinue
+        if ($Force -and -not $InitialSetup)
+        {
+            Write-Host '[profile] update staged; open a new shell to load it' -ForegroundColor DarkCyan
+        }
     }
     catch
     {
@@ -170,6 +179,11 @@ $UpdateProfile = {
     }
 }
 
+$forceUpdate = {
+    & $UpdateProfile (Split-Path $Pointer) $RemoteUri $Files $true
+}.GetNewClosure()
+Set-Item -Path Function:\global:Update-PowerShellProfile -Value $forceUpdate
+
 try
 {
     New-Item -ItemType Directory -Path $CachePath -Force -ErrorAction Stop | Out-Null
@@ -199,7 +213,7 @@ try
     if (-not $ready)
     {
         Write-Host '[profile] First-time setup: downloading profile...' -ForegroundColor Cyan
-        & $UpdateProfile $CachePath $RemoteUri $Files $true
+        & $UpdateProfile $CachePath $RemoteUri $Files $true $true
         if (Test-Path $Pointer)
         {
             $version = (Get-Content -Raw -Path $Pointer -ErrorAction Stop).Trim()
