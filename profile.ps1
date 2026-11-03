@@ -3,6 +3,7 @@
 # The next shell reports '[profile] updated' once after loading a staged update.
 # Run Update-PowerShellProfile to check immediately; changes load in the next shell.
 # Forced checks resolve the latest commit to avoid stale GitHub branch downloads.
+# Startup reports applied components and when the background updater is started.
 $CachePath = Join-Path $env:USERPROFILE '.cache\psprofile'
 $RemoteUri = 'https://raw.githubusercontent.com/hanpq/PSProfile/refs/heads/main/'
 $Files = @('CustomProfile.ps1', 'getps_ohmyposh.json', 'terminal_settings.json')
@@ -313,6 +314,7 @@ try
             Pipeline   = $pipeline
             Invocation = $pipeline.BeginInvoke()
         }
+        Write-Host '[profile] Started update runspace' -ForegroundColor DarkCyan
     }
 }
 catch
