@@ -45,6 +45,54 @@ switch ($PSVersionTable.PSEdition)
     }
 }
 
+# Replace stable Windows Terminal settings only when changed, preserving the previous file.
+if ($env:LOCALAPPDATA)
+{
+    $terminalDirectory = Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState'
+    if (Test-Path -LiteralPath $terminalDirectory -PathType Container)
+    {
+        $temporarySettings = $null
+        try
+        {
+            $terminalSource = Join-Path $CachePath 'terminal_settings.json'
+            Get-Content -Raw -LiteralPath $terminalSource -ErrorAction Stop |
+                ConvertFrom-Json -ErrorAction Stop | Out-Null
+            $terminalDestination = Join-Path $terminalDirectory 'settings.json'
+            $settingsExist = Test-Path -LiteralPath $terminalDestination -PathType Leaf
+            if (-not $settingsExist -or
+                (Get-FileHash -LiteralPath $terminalSource -ErrorAction Stop).Hash -ne
+                (Get-FileHash -LiteralPath $terminalDestination -ErrorAction Stop).Hash)
+            {
+                $temporarySettings = Join-Path $terminalDirectory ("settings.$([guid]::NewGuid().ToString('N')).tmp")
+                Copy-Item -LiteralPath $terminalSource -Destination $temporarySettings -ErrorAction Stop
+                Unblock-File -LiteralPath $temporarySettings -ErrorAction Stop
+                if ($settingsExist)
+                {
+                    [IO.File]::Replace($temporarySettings, $terminalDestination,
+                        (Join-Path $terminalDirectory 'settings.profile-backup.json'))
+                }
+                else
+                {
+                    Move-Item -LiteralPath $temporarySettings -Destination $terminalDestination -ErrorAction Stop
+                }
+                $temporarySettings = $null
+                Write-Host '[profile] Applied Terminal config' -ForegroundColor DarkCyan
+            }
+        }
+        catch
+        {
+            Write-Warning "Terminal config could not be applied: $($_.Exception.Message)"
+        }
+        finally
+        {
+            if ($temporarySettings -and (Test-Path -LiteralPath $temporarySettings))
+            {
+                Remove-Item -LiteralPath $temporarySettings -ErrorAction Stop
+            }
+        }
+    }
+}
+
 # Turn on information messages for the rest of the profile
 $global:InformationPreference = 'Continue'
 "Configured global InformationPreference to 'Continue'" | Write-Verbose
