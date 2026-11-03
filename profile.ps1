@@ -1,5 +1,6 @@
 ﻿# Install this bootstrapper as $PROFILE.CurrentUserAllHosts on each computer.
 # A local copy loads immediately; an update is staged for a later shell.
+# The next shell reports '[profile] updated' once after loading a staged update.
 $CachePath = Join-Path $env:USERPROFILE '.cache\psprofile'
 $RemoteUri = 'https://raw.githubusercontent.com/hanpq/PSProfile/refs/heads/main/'
 $Files = @('CustomProfile.ps1', 'getps_ohmyposh.json', 'terminal_settings.json')
@@ -15,7 +16,14 @@ $UpdateProfile = {
     try
     {
         $lockPath = Join-Path $CachePath 'update.lock'
-        for ($i = 0; $i -lt $(if ($Force) { 150 } else { 1 }); $i++)
+        for ($i = 0; $i -lt $(if ($Force)
+                {
+                    150 
+                }
+                else
+                {
+                    1 
+                }); $i++)
         {
             try
             {
@@ -25,11 +33,17 @@ $UpdateProfile = {
             }
             catch [IO.IOException]
             {
-                if (-not $Force) { return }
+                if (-not $Force)
+                {
+                    return 
+                }
                 Start-Sleep -Milliseconds 200
             }
         }
-        if ($null -eq $lock) { throw 'Timed out waiting for another profile update.' }
+        if ($null -eq $lock)
+        {
+            throw 'Timed out waiting for another profile update.' 
+        }
 
         $pointer = Join-Path $CachePath 'current.txt'
         $attempt = Join-Path $CachePath 'last-attempt.txt'
@@ -38,14 +52,14 @@ $UpdateProfile = {
             $installedVersion = (Get-Content -Raw -Path $pointer -ErrorAction Stop).Trim()
             if ($installedVersion -match '^[a-f0-9]{32}$' -and
                 @($Files | Where-Object {
-                    -not (Test-Path (Join-Path (Join-Path $CachePath $installedVersion) $_))
-                }).Count -eq 0)
+                        -not (Test-Path (Join-Path (Join-Path $CachePath $installedVersion) $_))
+                    }).Count -eq 0)
             {
                 return
             }
         }
         if (-not $Force -and (Test-Path $attempt) -and
-            (Get-Item $attempt).LastWriteTimeUtc -gt [datetime]::UtcNow.AddMinutes(-5))
+            (Get-Item $attempt).LastWriteTimeUtc -gt [datetime]::UtcNow.AddMinutes(-1))
         {
             return
         }
@@ -64,7 +78,10 @@ $UpdateProfile = {
         $parseErrors = $null
         [System.Management.Automation.Language.Parser]::ParseFile(
             (Join-Path $stage 'CustomProfile.ps1'), [ref]$null, [ref]$parseErrors) | Out-Null
-        if ($parseErrors.Count -gt 0) { throw "Downloaded profile has syntax errors: $($parseErrors[0])" }
+        if ($parseErrors.Count -gt 0)
+        {
+            throw "Downloaded profile has syntax errors: $($parseErrors[0])" 
+        }
         foreach ($file in $Files | Where-Object { $_ -like '*.json' })
         {
             Get-Content -Raw -Path (Join-Path $stage $file) -ErrorAction Stop |
@@ -101,6 +118,10 @@ $UpdateProfile = {
         }
 
         $version = Split-Path $stage -Leaf
+        if (-not $Force)
+        {
+            New-Item -ItemType File -Path (Join-Path $stage 'pending-update.txt') -ErrorAction Stop | Out-Null
+        }
         $temporaryPointer = Join-Path $CachePath ("current.$version.tmp")
         Set-Content -Path $temporaryPointer -Value $version -NoNewline -ErrorAction Stop
         if (Test-Path $pointer)
@@ -127,7 +148,10 @@ $UpdateProfile = {
         {
             Write-Error "Profile update failed and could not be logged: $message; $($_.Exception.Message)"
         }
-        if ($Force) { Write-Warning "Profile update failed: $message" }
+        if ($Force)
+        {
+            Write-Warning "Profile update failed: $message" 
+        }
     }
     finally
     {
@@ -139,7 +163,10 @@ $UpdateProfile = {
         {
             Remove-Item $stage -Recurse -Force
         }
-        if ($lock) { $lock.Dispose() }
+        if ($lock)
+        {
+            $lock.Dispose() 
+        }
     }
 }
 
@@ -167,8 +194,8 @@ try
         $currentDirectory = $CachePath
     }
     $ready = $currentDirectory -and @($Files | Where-Object {
-        -not (Test-Path (Join-Path $currentDirectory $_))
-    }).Count -eq 0
+            -not (Test-Path (Join-Path $currentDirectory $_))
+        }).Count -eq 0
     if (-not $ready)
     {
         Write-Host '[profile] First-time setup: downloading profile...' -ForegroundColor Cyan
@@ -182,8 +209,8 @@ try
             }
         }
         $ready = $currentDirectory -and @($Files | Where-Object {
-            -not (Test-Path (Join-Path $currentDirectory $_))
-        }).Count -eq 0
+                -not (Test-Path (Join-Path $currentDirectory $_))
+            }).Count -eq 0
     }
 
     if ($ready)
@@ -197,17 +224,35 @@ try
         {
             Write-Warning "Current profile failed to load: $($_.Exception.Message)"
             $previousPointer = Join-Path (Split-Path $Pointer) 'previous.txt'
-            if (-not (Test-Path $previousPointer)) { throw }
+            if (-not (Test-Path $previousPointer))
+            {
+                throw 
+            }
             $previousVersion = (Get-Content -Raw $previousPointer -ErrorAction Stop).Trim()
-            if ($previousVersion -notmatch '^[a-f0-9]{32}$') { throw }
+            if ($previousVersion -notmatch '^[a-f0-9]{32}$')
+            {
+                throw 
+            }
             $CachePath = Join-Path (Split-Path $Pointer) $previousVersion
             if (@($Files | Where-Object {
-                -not (Test-Path (Join-Path $CachePath $_))
-            }).Count -gt 0) { throw }
+                        -not (Test-Path (Join-Path $CachePath $_))
+                    }).Count -gt 0)
+            {
+                throw 
+            }
             . (Join-Path $CachePath 'CustomProfile.ps1')
             Write-Warning 'Loaded the previous profile version instead.'
         }
-        Write-Host '[profile] ready' -ForegroundColor DarkCyan
+        $pendingUpdate = Join-Path $CachePath 'pending-update.txt'
+        if ($CachePath -eq $currentDirectory -and (Test-Path $pendingUpdate))
+        {
+            Remove-Item -Path $pendingUpdate -ErrorAction Stop
+            Write-Host '[profile] updated' -ForegroundColor DarkCyan
+        }
+        else
+        {
+            Write-Host '[profile] ready' -ForegroundColor DarkCyan
+        }
     }
     else
     {
@@ -223,20 +268,20 @@ try
 
     $attempt = Join-Path (Split-Path $Pointer) 'last-attempt.txt'
     if ($ready -and (-not (Test-Path $attempt) -or
-        (Get-Item $attempt).LastWriteTimeUtc -le [datetime]::UtcNow.AddMinutes(-5)))
+            (Get-Item $attempt).LastWriteTimeUtc -le [datetime]::UtcNow.AddMinutes(-5)))
     {
         $runspace = [runspacefactory]::CreateRunspace()
         $runspace.Open()
         $pipeline = [powershell]::Create()
         $pipeline.Runspace = $runspace
         $null = $pipeline.AddScript($UpdateProfile.ToString()).
-            AddArgument((Split-Path $Pointer)).
-            AddArgument($RemoteUri).
-            AddArgument($Files).
-            AddArgument($false)
+        AddArgument((Split-Path $Pointer)).
+        AddArgument($RemoteUri).
+        AddArgument($Files).
+        AddArgument($false)
         $global:PowerShellProfileUpdate = @{
-            Runspace = $runspace
-            Pipeline = $pipeline
+            Runspace   = $runspace
+            Pipeline   = $pipeline
             Invocation = $pipeline.BeginInvoke()
         }
     }
